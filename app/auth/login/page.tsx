@@ -175,27 +175,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-gray-50 text-gray-500">OR</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className="mt-6 w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <div className="w-5 h-5 bg-blue-600 rounded flex items-center justify-center text-white font-bold text-xs">
-                G
-              </div>
-              <span className="font-medium text-gray-700">Continue with Google</span>
-            </button>
-          </div>
-
           <p className="mt-6 text-xs text-gray-500 text-center">
             By continuing, you agree to Minuty's{' '}
             <Link href="#" className="text-[#00A878] hover:underline">

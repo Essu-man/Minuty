@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   webpack: (config, { isServer }) => {
     // Disable canvas for server-side rendering
     config.resolve.alias.canvas = false;
-    
+
     // Fix PDF.js issues with Next.js
     if (!isServer) {
       config.resolve.fallback = {
@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
         crypto: false,
       };
     }
-    
+
     // Only ignore PDF.js during SSR, allow it on client
     if (isServer) {
       config.resolve.alias = {
@@ -28,7 +28,7 @@ const nextConfig: NextConfig = {
         ...config.resolve.alias,
       };
     }
-    
+
     return config;
   },
 };
