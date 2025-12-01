@@ -368,6 +368,13 @@ export default function DocumentViewer({
                     commentDiv.style.top = `${annotation.y}px`;
                     commentDiv.textContent = annotation.content || '';
                     commentDiv.style.maxWidth = '200px';
+
+                    // Apply random rotation from predefined angles
+                    const rotations = [-5, -3, 0, 3, 5, 8, -8];
+                    const randomRotation = rotations[Math.floor(Math.random() * rotations.length)];
+                    const rotation = annotation.rotation !== undefined ? annotation.rotation : randomRotation;
+                    commentDiv.style.transform = `rotate(${rotation}deg)`;
+
                     commentDiv.setAttribute('data-annotation-id', annotation.id);
                     overlay.appendChild(commentDiv);
                 } else if (annotation.type === 'highlight') {
@@ -405,6 +412,22 @@ export default function DocumentViewer({
                 sigImg.style.width = `${signature.width}px`;
                 sigImg.style.height = `${signature.height}px`;
                 sigImg.style.userSelect = 'none';
+
+                // Add drag functionality
+                sigImg.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    setDragging({
+                        id: signature.id,
+                        type: 'signature',
+                        startX: e.clientX,
+                        startY: e.clientY,
+                        initialX: signature.x,
+                        initialY: signature.y,
+                        page: currentPage
+                    });
+                });
+
                 overlay.appendChild(sigImg);
             });
 

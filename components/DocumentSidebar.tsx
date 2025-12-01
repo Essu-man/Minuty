@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { MessageSquare, Highlighter, Pen, FileSignature, X } from 'lucide-react';
 import { Annotation } from './DocumentViewer';
-import SignatureDisplay from './SignatureDisplay';
 import { Document } from '@/lib/firebase/firestore';
 
 interface DocumentSidebarProps {
@@ -87,7 +86,7 @@ export default function DocumentSidebar({
                                     onClick={() => {
                                         const newActiveTool = isActive ? null : tool.id;
                                         onToolSelect(newActiveTool);
-                                        
+
                                         // Set pending annotation for highlight/underline tools
                                         if (newActiveTool && (window as any).__documentViewerHandlers) {
                                             if (newActiveTool === 'highlight') {
@@ -178,27 +177,6 @@ export default function DocumentSidebar({
                         )}
                     </div>
                 </div>
-
-                {/* Approval Signatures Section */}
-                {document && (
-                    <div className="p-4 border-t border-gray-200">
-                        <h4 className="text-sm font-semibold text-gray-700 mb-3">Approval Signatures</h4>
-                        <div className="space-y-3">
-                            <SignatureDisplay
-                                title="Approved By"
-                                signature={document.approvedBySignature}
-                                signerName={document.approvedBy}
-                                signedAt={document.approvedAt}
-                            />
-                            <SignatureDisplay
-                                title="Issued By"
-                                signature={document.issuedBySignature}
-                                signerName={document.issuedBy}
-                                signedAt={document.issuedAt}
-                            />
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );
