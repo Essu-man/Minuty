@@ -15,6 +15,8 @@ export interface Document {
     id?: string;
     userId: string;
     fileName: string;
+    name?: string; // Display name for the document
+    url?: string; // URL to access the document
     originalUrl: string;
     finalUrl?: string;
     createdAt: Timestamp | Date;
@@ -32,6 +34,9 @@ export interface Document {
 }
 
 export const createDocument = async (document: Omit<Document, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
+    if (!db) {
+        throw new Error('Firestore is not initialized. Please check your Firebase configuration.');
+    }
     const docRef = await addDoc(collection(db, 'documents'), {
         ...document,
         createdAt: Timestamp.now(),
@@ -41,6 +46,9 @@ export const createDocument = async (document: Omit<Document, 'id' | 'createdAt'
 };
 
 export const getUserDocuments = async (userId: string): Promise<Document[]> => {
+    if (!db) {
+        throw new Error('Firestore is not initialized. Please check your Firebase configuration.');
+    }
     const q = query(collection(db, 'documents'), where('userId', '==', userId));
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map((doc) => ({
@@ -50,6 +58,9 @@ export const getUserDocuments = async (userId: string): Promise<Document[]> => {
 };
 
 export const updateDocument = async (documentId: string, updates: Partial<Document>): Promise<void> => {
+    if (!db) {
+        throw new Error('Firestore is not initialized. Please check your Firebase configuration.');
+    }
     const docRef = doc(db, 'documents', documentId);
     await updateDoc(docRef, {
         ...updates,
@@ -58,6 +69,9 @@ export const updateDocument = async (documentId: string, updates: Partial<Docume
 };
 
 export const deleteDocument = async (documentId: string): Promise<void> => {
+    if (!db) {
+        throw new Error('Firestore is not initialized. Please check your Firebase configuration.');
+    }
     const docRef = doc(db, 'documents', documentId);
     await deleteDoc(docRef);
 };

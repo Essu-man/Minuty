@@ -7,8 +7,12 @@ interface DocumentViewerProps {
     url: string;
     annotations: Annotation[];
     onAnnotationAdd: (annotation: Annotation) => void;
+    onAnnotationUpdate?: (annotation: Annotation) => void;
+    onAnnotationDelete?: (id: string) => void;
     signatures: Signature[];
     onSignatureAdd: (signature: Signature) => void;
+    onSignatureUpdate?: (signature: Signature) => void;
+    onSignatureDelete?: (id: string) => void;
     pendingSignature?: string | null;
     onDocumentClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }
@@ -22,6 +26,10 @@ export interface Annotation {
     content?: string;
     path?: string;
     color?: string;
+    width?: number;
+    height?: number;
+    fontStyle?: string;
+    rotation?: number;
 }
 
 export interface Signature {
@@ -38,15 +46,21 @@ export default function DocumentViewer({
     url,
     annotations,
     onAnnotationAdd,
+    onAnnotationUpdate,
+    onAnnotationDelete,
     signatures,
     onSignatureAdd,
+    onSignatureUpdate,
+    onSignatureDelete,
     pendingSignature,
     onDocumentClick,
 }: DocumentViewerProps) {
     const { isReady, pdfjs: contextPdfjs } = usePDFjs();
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const pageContainerRef = useRef<HTMLDivElement>(null);
     const [pages, setPages] = useState<any[]>([]);
+    const [numPages, setNumPages] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
     const [scale, setScale] = useState(1.5);
     const [loading, setLoading] = useState(true);
@@ -55,6 +69,24 @@ export default function DocumentViewer({
     const [error, setError] = useState<string | null>(null);
     const [activeTool, setActiveTool] = useState<string | null>(null);
     const [pendingAnnotation, setPendingAnnotation] = useState<{ type: string; content?: string } | null>(null);
+
+    // Drag state
+    const [dragging, setDragging] = useState<{
+        id: string;
+        type: 'annotation' | 'signature' | 'resize';
+        startX: number;
+        startY: number;
+        initialX: number;
+        initialY: number;
+        initialWidth?: number;
+        initialHeight?: number;
+        page: number;
+    } | null>(null);
+    const [dragDelta, setDragDelta] = useState({ x: 0, y: 0 });
+
+    // Edit state
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editContent, setEditContent] = useState('');
 
     const zoomIn = () => {
         setScale((prev) => Math.min(prev + 0.25, 3));
@@ -66,6 +98,97 @@ export default function DocumentViewer({
 
     const resetZoom = () => {
         setScale(1.5);
+    };
+
+    const goToNextPage = () => {
+        setCurrentPage((prev) => Math.min(prev + 1, numPages));
+    };
+
+    const goToPreviousPage = () => {
+        setCurrentPage((prev) => Math.max(prev - 1, 1));
+    };
+
+    const goToPage = (pageNum: number) => {
+        setCurrentPage(Math.max(1, Math.min(pageNum, numPages)));
+    };
+
+    const handleDoubleClick = (e: React.MouseEvent, annotation: Annotation) => {
+        e.stopPropagation();
+        if (annotation.type === 'comment') {
+            setEditingId(annotation.id);
+            setEditContent(annotation.content || '');
+        }
+    };
+
+    const handleEditSave = () => {
+        if (editingId && onAnnotationUpdate) {
+            const annotation = annotations.find(a => a.id === editingId);
+            if (annotation) {
+                onAnnotationUpdate({ ...annotation, content: editContent });
+            }
+        }
+        setEditingId(null);
+        setEditContent('');
+    };
+
+    const toggleItalic = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (editingId && onAnnotationUpdate) {
+            const annotation = annotations.find(a => a.id === editingId);
+            if (annotation) {
+                const newStyle = annotation.fontStyle === 'italic' ? 'normal' : 'italic';
+                onAnnotationUpdate({ ...annotation, fontStyle: newStyle });
+            }
+        }
+    };
+
+    const rotateComment = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (editingId && onAnnotationUpdate) {
+            const annotation = annotations.find(a => a.id === editingId);
+            if (annotation) {
+                const currentRotation = annotation.rotation || 0;
+                let newRotation = currentRotation + 45;
+                if (newRotation > 90) newRotation = -45;
+                onAnnotationUpdate({ ...annotation, rotation: newRotation });
+            }
+        }
+    };
+
+    const handleDeleteComment = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (editingId && onAnnotationDelete) {
+            onAnnotationDelete(editingId);
+            setEditingId(null);
+            setEditContent('');
+        }
+    };
+
+    const handleEditKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleEditSave();
+        }
+        if (e.key === 'Escape') {
+            setEditingId(null);
+            setEditContent('');
+        }
+    };
+
+    const handleMouseDown = (e: React.MouseEvent, id: string, type: 'annotation' | 'signature' | 'resize', initialX: number, initialY: number, page: number, initialWidth?: number, initialHeight?: number) => {
+        e.stopPropagation();
+        e.preventDefault();
+        setDragging({
+            id,
+            type,
+            startX: e.clientX,
+            startY: e.clientY,
+            initialX,
+            initialY,
+            initialWidth,
+            initialHeight,
+            page
+        });
     };
 
     // Expose setActiveTool and setPendingAnnotation for parent component
@@ -174,10 +297,11 @@ export default function DocumentViewer({
 
                 const loadingTask = pdfjs.getDocument({ url: proxyUrl });
                 const pdf = await loadingTask.promise;
-                const numPages = pdf.numPages;
+                const totalPages = pdf.numPages;
+                setNumPages(totalPages);
                 const pagePromises = [];
 
-                for (let i = 1; i <= numPages; i++) {
+                for (let i = 1; i <= totalPages; i++) {
                     pagePromises.push(pdf.getPage(i));
                 }
 
@@ -201,103 +325,160 @@ export default function DocumentViewer({
     }, [url, isReady, contextPdfjs]);
 
     useEffect(() => {
-        const renderPages = async () => {
-            if (!containerRef.current || pages.length === 0) return;
+        const renderCurrentPage = async () => {
+            if (!containerRef.current || pages.length === 0 || currentPage < 1 || currentPage > pages.length) return;
 
             containerRef.current.innerHTML = '';
 
-            for (let i = 0; i < pages.length; i++) {
-                const page = pages[i];
-                const viewport = page.getViewport({ scale });
+            const page = pages[currentPage - 1];
+            const viewport = page.getViewport({ scale });
 
-                const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d');
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
-                canvas.className = 'mb-4 shadow-lg mx-auto bg-white';
-                canvas.style.display = 'block';
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            canvas.className = 'shadow-lg mx-auto bg-white';
+            canvas.style.display = 'block';
 
-                const renderContext = {
-                    canvasContext: context,
-                    viewport: viewport,
-                };
+            const renderContext = {
+                canvasContext: context,
+                viewport: viewport,
+            };
 
-                await page.render(renderContext).promise;
-                containerRef.current.appendChild(canvas);
+            await page.render(renderContext).promise;
 
-                // Render annotations for this page
-                const pageAnnotations = annotations.filter((a) => a.page === i + 1);
-                const pageSignatures = signatures.filter((s) => s.page === i + 1);
+            // Render annotations for current page
+            const pageAnnotations = annotations.filter((a) => a.page === currentPage);
+            const pageSignatures = signatures.filter((s) => s.page === currentPage);
 
-                // Create overlay for annotations
-                const overlay = document.createElement('div');
-                overlay.className = 'absolute annotation-overlay pointer-events-none';
-                overlay.style.width = `${viewport.width}px`;
-                overlay.style.height = `${viewport.height}px`;
-                overlay.style.position = 'relative';
-                overlay.style.margin = '0 auto';
+            // Create overlay for annotations and signatures
+            const overlay = document.createElement('div');
+            overlay.className = 'absolute annotation-overlay pointer-events-none';
+            overlay.style.width = `${viewport.width}px`;
+            overlay.style.height = `${viewport.height}px`;
+            overlay.style.position = 'absolute';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
 
-                pageAnnotations.forEach((annotation) => {
-                    if (annotation.type === 'comment') {
-                        const commentDiv = document.createElement('div');
-                        commentDiv.className = 'absolute handwritten text-sm p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded pointer-events-auto';
-                        commentDiv.style.left = `${annotation.x}px`;
-                        commentDiv.style.top = `${annotation.y}px`;
-                        commentDiv.textContent = annotation.content || '';
-                        commentDiv.style.maxWidth = '200px';
-                        commentDiv.setAttribute('data-annotation-id', annotation.id);
-                        overlay.appendChild(commentDiv);
-                    } else if (annotation.type === 'highlight') {
-                        const highlightDiv = document.createElement('div');
-                        highlightDiv.className = 'absolute pointer-events-auto';
-                        highlightDiv.style.left = `${annotation.x}px`;
-                        highlightDiv.style.top = `${annotation.y}px`;
-                        highlightDiv.style.width = '200px';
-                        highlightDiv.style.height = '20px';
-                        highlightDiv.style.backgroundColor = annotation.color || 'yellow';
-                        highlightDiv.style.opacity = '0.3';
-                        highlightDiv.setAttribute('data-annotation-id', annotation.id);
-                        overlay.appendChild(highlightDiv);
-                    } else if (annotation.type === 'underline') {
-                        const underlineDiv = document.createElement('div');
-                        underlineDiv.className = 'absolute pointer-events-auto';
-                        underlineDiv.style.left = `${annotation.x}px`;
-                        underlineDiv.style.top = `${annotation.y}px`;
-                        underlineDiv.style.width = '200px';
-                        underlineDiv.style.height = '2px';
-                        underlineDiv.style.backgroundColor = annotation.color || 'blue';
-                        underlineDiv.setAttribute('data-annotation-id', annotation.id);
-                        overlay.appendChild(underlineDiv);
-                    }
+            pageAnnotations.forEach((annotation) => {
+                if (annotation.type === 'comment') {
+                    const commentDiv = document.createElement('div');
+                    commentDiv.className = 'absolute handwritten text-sm p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded pointer-events-auto cursor-move';
+                    commentDiv.style.left = `${annotation.x}px`;
+                    commentDiv.style.top = `${annotation.y}px`;
+                    commentDiv.textContent = annotation.content || '';
+                    commentDiv.style.maxWidth = '200px';
+                    commentDiv.setAttribute('data-annotation-id', annotation.id);
+                    overlay.appendChild(commentDiv);
+                } else if (annotation.type === 'highlight') {
+                    const highlightDiv = document.createElement('div');
+                    highlightDiv.className = 'absolute pointer-events-auto';
+                    highlightDiv.style.left = `${annotation.x}px`;
+                    highlightDiv.style.top = `${annotation.y}px`;
+                    highlightDiv.style.width = '200px';
+                    highlightDiv.style.height = '20px';
+                    highlightDiv.style.backgroundColor = annotation.color || 'yellow';
+                    highlightDiv.style.opacity = '0.3';
+                    highlightDiv.setAttribute('data-annotation-id', annotation.id);
+                    overlay.appendChild(highlightDiv);
+                } else if (annotation.type === 'underline') {
+                    const underlineDiv = document.createElement('div');
+                    underlineDiv.className = 'absolute pointer-events-auto';
+                    underlineDiv.style.left = `${annotation.x}px`;
+                    underlineDiv.style.top = `${annotation.y}px`;
+                    underlineDiv.style.width = '200px';
+                    underlineDiv.style.height = '2px';
+                    underlineDiv.style.backgroundColor = annotation.color || 'blue';
+                    underlineDiv.setAttribute('data-annotation-id', annotation.id);
+                    overlay.appendChild(underlineDiv);
+                }
+            });
+
+            pageSignatures.forEach((signature) => {
+                const sigImg = document.createElement('img');
+                sigImg.src = signature.imageData;
+                sigImg.className = 'absolute pointer-events-auto cursor-move';
+                sigImg.setAttribute('data-signature', 'true');
+                sigImg.setAttribute('data-signature-id', signature.id);
+                sigImg.style.left = `${signature.x}px`;
+                sigImg.style.top = `${signature.y}px`;
+                sigImg.style.width = `${signature.width}px`;
+                sigImg.style.height = `${signature.height}px`;
+                sigImg.style.userSelect = 'none';
+                overlay.appendChild(sigImg);
+            });
+
+            const pageContainer = document.createElement('div');
+            pageContainer.className = 'relative inline-block';
+            pageContainer.setAttribute('data-page-container', 'true');
+            pageContainer.setAttribute('data-page-number', currentPage.toString());
+            pageContainer.style.width = `${viewport.width}px`;
+            pageContainer.style.height = `${viewport.height}px`;
+            pageContainer.appendChild(canvas);
+            pageContainer.appendChild(overlay);
+            containerRef.current.appendChild(pageContainer);
+        };
+
+        renderCurrentPage();
+    }, [pages, scale, annotations, signatures, currentPage]);
+
+    // Drag Logic
+    useEffect(() => {
+        const onMouseMove = (e: MouseEvent) => {
+            if (!dragging) return;
+
+            if (dragging.type === 'resize') {
+                const deltaX = e.clientX - dragging.startX;
+                setDragDelta({ x: deltaX, y: 0 });
+            } else {
+                setDragDelta({
+                    x: e.clientX - dragging.startX,
+                    y: e.clientY - dragging.startY
                 });
-
-                pageSignatures.forEach((signature) => {
-                    const sigImg = document.createElement('img');
-                    sigImg.src = signature.imageData;
-                    sigImg.className = 'absolute pointer-events-auto';
-                    sigImg.setAttribute('data-signature', 'true');
-                    sigImg.setAttribute('data-signature-id', signature.id);
-                    sigImg.style.left = `${signature.x}px`;
-                    sigImg.style.top = `${signature.y}px`;
-                    sigImg.style.width = `${signature.width}px`;
-                    sigImg.style.height = `${signature.height}px`;
-                    overlay.appendChild(sigImg);
-                });
-
-                const pageContainer = document.createElement('div');
-                pageContainer.className = 'relative mb-8';
-                pageContainer.setAttribute('data-page-container', 'true');
-                pageContainer.setAttribute('data-page-number', (i + 1).toString());
-                pageContainer.style.width = `${viewport.width}px`;
-                pageContainer.style.margin = '0 auto';
-                pageContainer.appendChild(canvas);
-                pageContainer.appendChild(overlay);
-                containerRef.current.appendChild(pageContainer);
             }
         };
 
-        renderPages();
-    }, [pages, scale, annotations, signatures]);
+        const onMouseUp = (e: MouseEvent) => {
+            if (!dragging) return;
+
+            if (dragging.type === 'resize' && onAnnotationUpdate) {
+                const deltaX = e.clientX - dragging.startX;
+                const ann = annotations.find(a => a.id === dragging.id);
+                if (ann) {
+                    const newWidth = Math.max(20, (dragging.initialWidth || 200) + deltaX);
+                    onAnnotationUpdate({ ...ann, width: newWidth });
+                }
+            } else {
+                const finalX = dragging.initialX + (e.clientX - dragging.startX);
+                const finalY = dragging.initialY + (e.clientY - dragging.startY);
+
+                if (dragging.type === 'signature' && onSignatureUpdate) {
+                    const sig = signatures.find(s => s.id === dragging.id);
+                    if (sig) {
+                        onSignatureUpdate({ ...sig, x: finalX, y: finalY });
+                    }
+                } else if (dragging.type === 'annotation' && onAnnotationUpdate) {
+                    const ann = annotations.find(a => a.id === dragging.id);
+                    if (ann) {
+                        onAnnotationUpdate({ ...ann, x: finalX, y: finalY });
+                    }
+                }
+            }
+
+            setDragging(null);
+            setDragDelta({ x: 0, y: 0 });
+        };
+
+        if (dragging) {
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+        }
+
+        return () => {
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+        };
+    }, [dragging, signatures, annotations, onSignatureUpdate, onAnnotationUpdate]);
 
     if (loading) {
         return (
@@ -512,7 +693,51 @@ export default function DocumentViewer({
                 </button>
             </div>
 
-            <div ref={containerRef} className="flex flex-col items-center" onClick={handleDocumentClick}></div>
+            {/* Page Navigation Controls */}
+            {numPages > 1 && (
+                <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-50 bg-white dark:bg-gray-800 rounded-lg shadow-lg px-4 py-3 flex items-center gap-4 border border-gray-200 dark:border-gray-700">
+                    <button
+                        onClick={goToPreviousPage}
+                        disabled={currentPage === 1}
+                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Previous Page"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Page
+                        </span>
+                        <input
+                            type="number"
+                            min="1"
+                            max={numPages}
+                            value={currentPage}
+                            onChange={(e) => goToPage(parseInt(e.target.value) || 1)}
+                            className="w-16 px-2 py-1 text-center border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                        />
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                            of {numPages}
+                        </span>
+                    </div>
+
+                    <button
+                        onClick={goToNextPage}
+                        disabled={currentPage === numPages}
+                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Next Page"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                    </button>
+                </div>
+            )}
+
+            <div ref={containerRef} className="flex flex-col items-center justify-center min-h-full" onClick={handleDocumentClick}></div>
         </div>
     );
 }

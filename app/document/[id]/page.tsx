@@ -151,6 +151,70 @@ export default function DocumentPage() {
         }
     };
 
+    const handleAnnotationUpdate = async (updatedAnnotation: Annotation) => {
+        const newAnnotations = annotations.map(a =>
+            a.id === updatedAnnotation.id ? updatedAnnotation : a
+        );
+        setAnnotations(newAnnotations);
+
+        if (document?.id) {
+            try {
+                await updateDocument(document.id, {
+                    annotations: newAnnotations as any,
+                });
+            } catch (error) {
+                console.error('Error updating annotation:', error);
+            }
+        }
+    };
+
+    const handleAnnotationDelete = async (id: string) => {
+        const newAnnotations = annotations.filter(a => a.id !== id);
+        setAnnotations(newAnnotations);
+
+        if (document?.id) {
+            try {
+                await updateDocument(document.id, {
+                    annotations: newAnnotations as any,
+                });
+            } catch (error) {
+                console.error('Error deleting annotation:', error);
+            }
+        }
+    };
+
+    const handleSignatureUpdate = async (updatedSignature: Signature) => {
+        const newSignatures = signatures.map(s =>
+            s.id === updatedSignature.id ? updatedSignature : s
+        );
+        setSignatures(newSignatures);
+
+        if (document?.id) {
+            try {
+                await updateDocument(document.id, {
+                    signatures: newSignatures as any,
+                });
+            } catch (error) {
+                console.error('Error updating signature:', error);
+            }
+        }
+    };
+
+    const handleSignatureDelete = async (id: string) => {
+        const newSignatures = signatures.filter(s => s.id !== id);
+        setSignatures(newSignatures);
+
+        if (document?.id) {
+            try {
+                await updateDocument(document.id, {
+                    signatures: newSignatures as any,
+                });
+            } catch (error) {
+                console.error('Error deleting signature:', error);
+            }
+        }
+    };
+
     const handleSaveFinal = async () => {
         if (!document) return;
 
@@ -287,15 +351,21 @@ export default function DocumentPage() {
 
             <div className="flex-1 flex overflow-hidden">
                 <div className="flex-1 overflow-hidden">
-                    <DocumentViewer
-                        url={document.originalUrl}
-                        annotations={annotations}
-                        onAnnotationAdd={handleAnnotationAdd}
-                        signatures={signatures}
-                        onSignatureAdd={(sig) => setSignatures([...signatures, sig])}
-                        pendingSignature={pendingSignature}
-                        onDocumentClick={handleDocumentClick}
-                    />
+                    {document && document.originalUrl && (
+                        <DocumentViewer
+                            url={document.originalUrl}
+                            annotations={annotations}
+                            onAnnotationAdd={handleAnnotationAdd}
+                            onAnnotationUpdate={handleAnnotationUpdate}
+                            onAnnotationDelete={handleAnnotationDelete}
+                            signatures={signatures}
+                            onSignatureAdd={(sig) => setSignatures([...signatures, sig])}
+                            onSignatureUpdate={handleSignatureUpdate}
+                            onSignatureDelete={handleSignatureDelete}
+                            pendingSignature={pendingSignature}
+                            onDocumentClick={handleDocumentClick}
+                        />
+                    )}
                 </div>
 
                 <AnimatePresence>
